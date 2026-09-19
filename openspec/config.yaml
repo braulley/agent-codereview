@@ -1,0 +1,75 @@
+schema: spec-driven
+
+# Project context
+# Shown to AI when creating artifacts. Covers tech stack, conventions, domain knowledge.
+context: |
+  Product: CodeReview Agent — Agente Inteligente de Revisão de Código (MVP v1.0)
+
+  ## Tech Stack
+  - Python 3.11+, FastAPI (async), Uvicorn, Redis (TTL curto), RabbitMQ/AWS SQS
+  - LLM: Google Gemini ou OpenAI GPT-4, abstraído via LLM Gateway em integrations/llm/
+  - Linters: Ruff (lint + format), Mypy strict (sem Any explícito, sem type: ignore ilegítimo)
+  - Testes: pytest, pytest-cov, httpx; mocks: unittest.mock / respx / pytest-mock
+
+  ## Architecture
+  - Event-driven assíncrono: Webhook Receiver → Fila → Worker → LLM Gateway + GitHub API Client
+  - Gateways em integrations/ isolam LLM e GitHub (troca de provedor sem impacto no core — RNF-13)
+  - Estrutura: opencode/src/{api,core/{analyzer,classifier,reporter},integrations,queue,config}
+  - Testes em: opencode/tests/{unit,integration,e2e}
+
+  ## Domain Rules
+  - Severidade: CRÍTICO | ALTO | MÉDIO | BAIXO
+  - CRÍTICO → REQUEST_CHANGES automático; bloqueia merge
+  - Webhook: POST /webhooks/github, validação HMAC-SHA256, resposta HTTP 202 em < 3s
+  - Diff máx: 500 linhas (MVP); Linguagens: Python, JS/TS, Java
+  - Código-fonte NUNCA persistido (apenas metadados de resultado — RNF-07)
+  - Logs: nunca gravar código-fonte completo nem tokens/chaves de API
+
+  ## Conventions
+  - Conventional commits; variáveis de ambiente via config/settings.py (nunca direto no código)
+  - Testes unitários/integração: NUNCA fazem chamadas reais à rede (GitHub API ou LLM)
+
+# Per-artifact rules
+rules:
+  proposal:
+    - "Referenciar os RFs e RNFs do spec.md afetados"
+    - "Incluir seção Non-goals para delimitar escopo"
+    - "Indicar se é MVP ou Pós-MVP; avaliar impacto em segurança/privacidade (LGPD/GDPR)"
+    - "Manter proposta concisa (máx 600 palavras no corpo)"
+
+  tasks:
+    - "Quebrar tarefas em blocos de no máximo 2 horas de trabalho"
+    - "Toda tarefa de feature deve ter subtarefa correspondente de testes (unit e/ou integration)"
+    - "Tarefas com código LLM devem incluir subtarefa de calibração de prompt"
+    - "Indicar dependências entre tarefas quando existirem"
+
+  spec:
+    - "Seguir estrutura IEEE 830 adaptada (conforme spec.md existente)"
+    - "Requisito funcional: ID, Nome, Prioridade, Ator, Descrição, Critérios de Aceite testáveis"
+    - "Requisito não funcional: ID, Requisito, Critério de Aceite mensurável"
+    - "Contratos de interface devem incluir payloads de exemplo em JSON"
+
+  design:
+    - "Indicar qual componente é afetado: api/, core/, integrations/, queue/"
+    - "Decisões que alterem o fluxo Webhook→Fila→Worker→LLM devem justificar impacto em RNF-01 e RNF-03"
+
+  tests:
+    - "Cobertura mínima de 80% nos pacotes core/ (RNF-15)"
+    - "Casos obrigatórios para RF-05 (OWASP): SQL Injection, XSS, IDOR, Broken Access Control, Secrets"
+    - "Mocks de GitHub API e LLM em todos os testes unitários e de integração (nunca chamadas reais)"
+    - "Validar que código-fonte não é persistido após análise (RNF-07)"
+
+# Per-operation guidance
+operations:
+  apply:
+    guidance:
+      - "Verificar se a mudança afeta o fluxo crítico: Webhook → Fila → Worker → LLM → GitHub"
+      - "Rodar pytest e mypy --strict após cada módulo implementado"
+      - "Manter resumos de testes concisos mas com cobertura e casos-limite informados"
+      - "Para mudanças em segurança/privacidade, adicionar nota explícita sobre impacto LGPD/GDPR"
+
+  archive:
+    guidance:
+      - "Resumir o resultado do archive antes de finalizar"
+      - "Registrar quais critérios de aceite do MVP (spec.md seção 9) foram atendidos"
+      - "Documentar lições aprendidas (falsos positivos/negativos, comportamentos inesperados)"
