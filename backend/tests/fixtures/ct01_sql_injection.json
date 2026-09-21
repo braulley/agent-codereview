@@ -1,0 +1,14 @@
+{
+  "alerts": [
+    {
+      "file": "users.py",
+      "line_start": 12,
+      "line_end": 12,
+      "severity": "CRITICAL",
+      "title": "SQL Injection via concatenação direta de input",
+      "description": "A query SQL é construída por concatenação direta de input não sanitizado. Referência: OWASP Top 10 — A03:2021 Injection.",
+      "suggestion": "cursor.execute('SELECT * FROM users WHERE id = ?', (user_input,))",
+      "category": "SECURITY"
+    }
+  ]
+}

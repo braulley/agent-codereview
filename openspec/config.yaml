@@ -3,73 +3,150 @@ schema: spec-driven
 # Project context
 # Shown to AI when creating artifacts. Covers tech stack, conventions, domain knowledge.
 context: |
-  Product: CodeReview Agent — Agente Inteligente de Revisão de Código (MVP v1.0)
+  Product: Agent Code Review — Revisão Inteligente e Interativa de Código com IA (MVP v1.0.0)
+  Docs: docs/prd.md · docs/spec.md · docs/architecture.md · docs/design.md
 
   ## Tech Stack
-  - Python 3.11+, FastAPI (async), Uvicorn, Redis (TTL curto), RabbitMQ/AWS SQS
-  - LLM: Google Gemini ou OpenAI GPT-4, abstraído via LLM Gateway em integrations/llm/
-  - Linters: Ruff (lint + format), Mypy strict (sem Any explícito, sem type: ignore ilegítimo)
-  - Testes: pytest, pytest-cov, httpx; mocks: unittest.mock / respx / pytest-mock
+  Frontend:
+    - Next.js 15 (App Router), TypeScript 5.x, Tailwind CSS v4.x
+    - @monaco-editor/react 4.x (editor principal + diff view + executeEdits)
+    - react-diff-viewer-continued 4.x (side-by-side e unified diff)
+    - Hooks customizados: useSSE, useAlerts, useEditor, useEditorHighlight
+
+  Backend:
+    - Python 3.12+, FastAPI 0.115.x (ASGI via Uvicorn), Pydantic v2.x
+    - Streaming: sse-starlette (SSE proxy; não WebSocket — ADR-01)
+    - Linters: ruff check + ruff format; type checking: mypy --strict
+    - Testes: pytest, pytest-cov (>=80% em src/core/), respx, unittest.mock
+
+  LLM:
+    - Provedor exclusivo: Google Gemini gemini-3.6-flash
+    - response_schema (Structured Outputs) obrigatório em 100% das chamadas
+    - Abstração em backend/src/integrations/llm/
+
+  Infraestrutura:
+    - Docker + Docker Compose (sem banco de dados, sem fila — ADR-02 stateless)
+    - CI/CD: GitHub Actions (lint, types, tests, build)
+    - Sem Redis, sem RabbitMQ, sem ORM no MVP
 
   ## Architecture
-  - Event-driven assíncrono: Webhook Receiver → Fila → Worker → LLM Gateway + GitHub API Client
-  - Gateways em integrations/ isolam LLM e GitHub (troca de provedor sem impacto no core — RNF-13)
-  - Estrutura: opencode/src/{api,core/{analyzer,classifier,reporter},integrations,queue,config}
-  - Testes em: opencode/tests/{unit,integration,e2e}
+  Estilo: Client-Server com BFF (Backend-for-Frontend); stateless no backend.
+  Fluxo critico:
+    Browser (usuario cola codigo ou URL de PR)
+      -> POST /api/analyze (FastAPI)
+        -> Gemini API (response_schema + streaming)
+          -> SSE stream (eventos: alert | score | done)
+            -> Monaco Editor + Alert Panel (React state, sem persistencia)
+
+  Estrutura do monorepo:
+    frontend/{app, components/{Editor,AlertPanel,DiffViewer,HealthDashboard,ui},
+               hooks, lib, types}
+    backend/src/{api/routes, core/{analyzer,validator,scorer},
+                 integrations/{llm,github,gitlab}, config}
+    backend/tests/{unit, integration}
+
+  Endpoints publicos:
+    - POST /api/analyze      -> SSE stream (alert | score | done)
+    - POST /api/diff/ingest  -> diff de PR/MR GitHub ou GitLab
+    - GET  /api/health       -> status, versao, conectividade Gemini
 
   ## Domain Rules
-  - Severidade: CRÍTICO | ALTO | MÉDIO | BAIXO
-  - CRÍTICO → REQUEST_CHANGES automático; bloqueia merge
-  - Webhook: POST /webhooks/github, validação HMAC-SHA256, resposta HTTP 202 em < 3s
-  - Diff máx: 500 linhas (MVP); Linguagens: Python, JS/TS, Java
-  - Código-fonte NUNCA persistido (apenas metadados de resultado — RNF-07)
-  - Logs: nunca gravar código-fonte completo nem tokens/chaves de API
+  Severidade (enum ingles, alinhado com Pydantic model e response_schema):
+    CRITICAL | HIGH | MEDIUM | LOW
+  Categorias: SECURITY | PERFORMANCE | QUALITY | MAINTAINABILITY
+
+  Code Health Score: max(0, 100 - (CRITICAL*25 + HIGH*10 + MEDIUM*3 + LOW*1))
+    - EXCELLENT 91-100 (verde  #10B981)
+    - GOOD      71-90  (amarelo #EAB308)
+    - ATTENTION 41-70  (laranja #F97316)
+    - CRITICAL  0-40   (vermelho #EF4444)
+
+  Truncamento de diff: > 500 linhas -> truncar no backend com aviso ao frontend
+  Codigo submetido: NUNCA persistido em banco ou log (ADR-02, RNF03)
+  API Keys (GEMINI_API_KEY, GITHUB_TOKEN, GITLAB_TOKEN): exclusivamente em env
+    do servidor; jamais no bundle client-side (RNF03)
+
+  ## Design System (docs/design.md)
+  Visual: brutalist telemetry terminal; dark mode; 0px border-radius em tudo
+  Fontes: Space Grotesk (titulos/UI), Hanken Grotesk (corpo), JetBrains Mono (codigo)
+  Canvas base: #090D16; Superficie L1: #111827; Superficie L2: #161F30
+  Brand/beacon: #F97316 (orange); secondary: #3B82F6; success: #10B981
+  Severidade OWASP no editor:
+    CRITICAL: gutter #EF4444, highlight rgba(239,68,68,0.15)
+    HIGH:     gutter #F97316, highlight rgba(249,115,22,0.15)
+    MEDIUM:   gutter #EAB308, highlight rgba(234,179,8,0.12)
+    LOW:      gutter #3B82F6, highlight rgba(59,130,246,0.10)
+  Layout: three-pane (Left Telemetry Rail 280-340px | Central Stage fluid |
+          Right Action Drawer 320-420px collapsable)
+  Sem backdrop-filter; superficies 100% opacas; hairline borders 1px
 
   ## Conventions
-  - Conventional commits; variáveis de ambiente via config/settings.py (nunca direto no código)
-  - Testes unitários/integração: NUNCA fazem chamadas reais à rede (GitHub API ou LLM)
+  - Testes unit/integration NUNCA fazem chamadas reais a rede (Gemini/GitHub/GitLab)
+    -> mockar com respx (HTTP) ou unittest.mock
+  - Log JSON em stdout: tokens_used, analysis_duration_ms, erros de schema/API
+    -> NUNCA logar codigo-fonte, diff, GEMINI_API_KEY, GITHUB_TOKEN, GITLAB_TOKEN
+  - Score calculado no backend (scorer/) e recalculado client-side em < 100ms
+  - Pydantic v2 valida 100% das respostas da LLM antes de retransmitir
+  - Sem versionamento de URL no MVP (/api/*); /api/v2/* apenas para breaking changes
 
 # Per-artifact rules
 rules:
   proposal:
-    - "Referenciar os RFs e RNFs do spec.md afetados"
-    - "Incluir seção Non-goals para delimitar escopo"
-    - "Indicar se é MVP ou Pós-MVP; avaliar impacto em segurança/privacidade (LGPD/GDPR)"
-    - "Manter proposta concisa (máx 600 palavras no corpo)"
+    - "Referenciar os IDs de RF e RNF do docs/spec.md afetados (ex: RF02, RNF01)"
+    - "Incluir secao Non-goals para delimitar escopo; indicar se e MVP ou Pos-MVP"
+    - "Avaliar impacto em seguranca/privacidade: API Keys, persistencia, bundle client-side"
+    - "Manter proposta concisa (max 600 palavras no corpo)"
 
   tasks:
-    - "Quebrar tarefas em blocos de no máximo 2 horas de trabalho"
-    - "Toda tarefa de feature deve ter subtarefa correspondente de testes (unit e/ou integration)"
-    - "Tarefas com código LLM devem incluir subtarefa de calibração de prompt"
-    - "Indicar dependências entre tarefas quando existirem"
+    - "Quebrar tarefas em blocos de no maximo 2 horas de trabalho"
+    - "Toda tarefa de feature deve ter subtarefa de testes (unit e/ou integration)"
+    - "Tarefas com codigo LLM devem incluir subtarefa de calibracao de prompt e validacao Pydantic"
+    - "Indicar dependencias entre tarefas quando existirem"
+    - "Tarefas de frontend: especificar qual hook ou componente e afetado"
 
   spec:
-    - "Seguir estrutura IEEE 830 adaptada (conforme spec.md existente)"
-    - "Requisito funcional: ID, Nome, Prioridade, Ator, Descrição, Critérios de Aceite testáveis"
-    - "Requisito não funcional: ID, Requisito, Critério de Aceite mensurável"
-    - "Contratos de interface devem incluir payloads de exemplo em JSON"
+    - "Seguir estrutura do docs/spec.md existente (IEEE 830 adaptada)"
+    - "RF: ID, Nome, Prioridade (P0/P1/P2), Ator, Descricao, Criterios de Aceite testaveis"
+    - "RNF: ID, Requisito, Criterio de Aceite mensuravel com numero concreto"
+    - "Contratos de interface: incluir payload de exemplo em JSON com todos os campos"
+    - "Mapear requisito para os CTs obrigatorios (CT01-CT08) quando aplicavel"
 
   design:
-    - "Indicar qual componente é afetado: api/, core/, integrations/, queue/"
-    - "Decisões que alterem o fluxo Webhook→Fila→Worker→LLM devem justificar impacto em RNF-01 e RNF-03"
+    - "Indicar qual camada e afetada: frontend/ (componente/hook) ou backend/ (modulo core/)"
+    - "Decisoes que alterem o fluxo POST /api/analyze -> SSE -> Monaco devem justificar impacto em RNF02 (latencia TTFA <= 1.500ms) e RNF01 (schema reliability)"
+    - "Mudancas de UI devem referenciar o design system de docs/design.md (cores, tipografia, border-radius 0px, layout three-pane)"
+    - "Decisoes de seguranca devem referenciar RNF03 (sem API Key no bundle client-side)"
 
   tests:
-    - "Cobertura mínima de 80% nos pacotes core/ (RNF-15)"
-    - "Casos obrigatórios para RF-05 (OWASP): SQL Injection, XSS, IDOR, Broken Access Control, Secrets"
-    - "Mocks de GitHub API e LLM em todos os testes unitários e de integração (nunca chamadas reais)"
-    - "Validar que código-fonte não é persistido após análise (RNF-07)"
+    - "Cobertura minima de 80% nos pacotes backend/src/core/ (RNF01 + spec.md §8)"
+    - "Casos obrigatorios CT01-CT08 (docs/spec.md §7) devem ser cobertos:"
+    - "  CT01: SQL Injection -> CRITICAL + SECURITY"
+    - "  CT02: Segredo hardcoded -> CRITICAL + SECURITY"
+    - "  CT03: Codigo limpo -> painel vazio, Score = 100"
+    - "  CT04: Timeout de API -> toast + botao Tentar Novamente"
+    - "  CT05: URL de PR invalida -> validacao client-side antes do envio"
+    - "  CT06: Filtro de severidade -> cards e gutter icons corretos ocultados"
+    - "  CT07: Aplicar correcao + Ctrl+Z -> reversao correta"
+    - "  CT08: Arquivo 2.000 linhas -> editor responsivo sem freeze"
+    - "Mocks obrigatorios em todos os testes unitarios e de integracao:"
+    - "  respx para HTTP (Gemini API, GitHub API, GitLab API)"
+    - "  unittest.mock para dependencias internas"
+    - "Validar que codigo-fonte e diff NAO sao persistidos apos analise (RNF03)"
+    - "Validar que GEMINI_API_KEY nao aparece em nenhum log (RNF03)"
 
 # Per-operation guidance
 operations:
   apply:
     guidance:
-      - "Verificar se a mudança afeta o fluxo crítico: Webhook → Fila → Worker → LLM → GitHub"
-      - "Rodar pytest e mypy --strict após cada módulo implementado"
+      - "Verificar se a mudanca afeta o fluxo critico: POST /api/analyze -> Gemini (SSE) -> eventos alert|score|done -> Monaco Editor + Alert Panel"
+      - "Apos cada modulo de backend: ruff check src tests --fix --select E,W,F && ruff format src tests && mypy --strict src && pytest -q --cov=src/core --cov-fail-under=80"
+      - "Apos cada modulo de frontend: npm run lint && npx tsc --noEmit && npm test && npm run build"
+      - "Para mudancas em seguranca/privacidade (RNF03): verificar bundle Next.js com grep nas strings GEMINI_API_KEY, GITHUB_TOKEN, GITLAB_TOKEN"
       - "Manter resumos de testes concisos mas com cobertura e casos-limite informados"
-      - "Para mudanças em segurança/privacidade, adicionar nota explícita sobre impacto LGPD/GDPR"
 
   archive:
     guidance:
       - "Resumir o resultado do archive antes de finalizar"
-      - "Registrar quais critérios de aceite do MVP (spec.md seção 9) foram atendidos"
-      - "Documentar lições aprendidas (falsos positivos/negativos, comportamentos inesperados)"
+      - "Registrar quais CTs obrigatorios (CT01-CT08) do spec.md §7 foram atendidos"
+      - "Registrar cobertura final de backend/src/core/ (target: >= 80%)"
+      - "Documentar licoes aprendidas: comportamentos da Gemini API, edge cases de parsing, performance do Monaco com arquivos grandes"

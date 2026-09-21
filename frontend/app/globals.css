@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/* Telemetry Triage tokens (docs/design.md) — Tailwind v4 @theme */
+@theme {
+  --color-canvas: #090D16;
+  --color-surface-l1: #111827;
+  --color-surface-l2: #161F30;
+  --color-surface-l3: #1E293B;
+  --color-hairline: #1F2937;
+  --color-hairline-strong: #2A364F;
+  --color-beacon: #F97316;
+  --color-severity-critical: #EF4444;
+  --color-severity-high: #F97316;
+  --color-severity-medium: #EAB308;
+  --color-severity-low: #3B82F6;
+  --color-success: #10B981;
+  --color-secondary: #3B82F6;
+
+  --radius-none: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+
+  --font-display: var(--font-space-grotesk), ui-sans-serif, sans-serif;
+  --font-sans: var(--font-hanken-grotesk), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* Shell breakpoints: lg=1024 (tabs→drawer), xl=1280 (three panes) */
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: #e5e7eb;
+  font-family: var(--font-sans);
+  margin: 0;
+}
+
+/* RF08 severity decorations (Monaco) — 0px radius, opaque gutters, no backdrop-filter */
+.acr-gutter-critical,
+.acr-gutter-high,
+.acr-gutter-medium,
+.acr-gutter-low {
+  border-radius: 0;
+  width: 4px !important;
+  margin-left: 3px;
+}
+
+.acr-gutter-critical {
+  background: #ef4444;
+}
+.acr-gutter-high {
+  background: #f97316;
+}
+.acr-gutter-medium {
+  background: #eab308;
+}
+.acr-gutter-low {
+  background: #3b82f6;
+}
+
+.acr-glyph-critical,
+.acr-glyph-high,
+.acr-glyph-medium,
+.acr-glyph-low {
+  border-radius: 0 !important;
+  margin-left: 3px;
+  width: 8px !important;
+  height: 8px !important;
+  cursor: pointer;
+}
+
+.acr-glyph-critical {
+  background: #ef4444;
+}
+.acr-glyph-high {
+  background: #f97316;
+}
+.acr-glyph-medium {
+  background: #eab308;
+}
+.acr-glyph-low {
+  background: #3b82f6;
+}
+
+.acr-hl-critical,
+.acr-hl-high,
+.acr-hl-medium,
+.acr-hl-low,
+.acr-hl-temp-critical,
+.acr-hl-temp-high,
+.acr-hl-temp-medium,
+.acr-hl-temp-low {
+  border-radius: 0 !important;
+}
+
+.acr-hl-critical {
+  background: rgba(239, 68, 68, 0.15);
+}
+.acr-hl-high {
+  background: rgba(249, 115, 22, 0.15);
+}
+.acr-hl-medium {
+  background: rgba(234, 179, 8, 0.12);
+}
+.acr-hl-low {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.acr-hl-temp-critical {
+  background: rgba(239, 68, 68, 0.28);
+}
+.acr-hl-temp-high {
+  background: rgba(249, 115, 22, 0.28);
+}
+.acr-hl-temp-medium {
+  background: rgba(234, 179, 8, 0.22);
+}
+.acr-hl-temp-low {
+  background: rgba(59, 130, 246, 0.2);
+}
